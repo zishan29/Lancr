@@ -50,7 +50,7 @@ export const invoicesTable = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => clientsTable.id, { onDelete: "cascade" }),
-    invoiceNumber: integer("invoice_number").notNull(),
+    invoiceNumber: varchar("invoice_number").notNull(),
     status: invoiceStatusEnum("status").notNull(),
     dueDate: date("due_date").notNull(),
     issueDate: date("issue_date").notNull(),

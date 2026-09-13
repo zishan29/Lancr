@@ -1,0 +1,1 @@
+ALTER TABLE "invoices" ALTER COLUMN "invoice_number" SET DATA TYPE varchar;
