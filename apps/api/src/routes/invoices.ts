@@ -14,6 +14,8 @@ import type { InvoiceItemInput, CreateInvoiceBody } from "../types/invoice";
 
 const invoiceRouter = Express.Router();
 
+const VALID_STATUSES = ["draft", "sent", "paid", "overdue"] as const;
+
 invoiceRouter.get("/", async (req, res) => {
   const { userId } = getAuth(req);
   if (!userId) {
@@ -131,4 +133,81 @@ invoiceRouter.post("/", async (req, res) => {
   }
 });
 
+invoiceRouter.patch("/:id", async (req, res) => {
+  const invoiceId = req.params.id;
+  const { userId } = getAuth(req);
+  const { status } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ err: "Unauthorized" });
+  }
+  try {
+    const user = await getUserByClerkId(userId);
+    if (!user) {
+      return res.status(404).json({ err: "User not found!" });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId));
+
+    if (!existing || existing.userId !== user.id) {
+      return res.status(403).json({ err: "Forbidden" });
+    }
+
+    if (!VALID_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json({ err: "Illegal status update, provide a suitable status type" });
+    }
+
+    const [updatedInvoice] = await db
+      .update(invoicesTable)
+      .set({
+        status,
+      })
+      .where(eq(invoicesTable.id, invoiceId))
+      .returning();
+
+    res.status(200).json(updatedInvoice);
+  } catch (err) {
+    if (err instanceof Error) {
+      return res.status(500).json({ err: err.message });
+    }
+  }
+});
+
+invoiceRouter.delete("/:id", async (req, res) => {
+  const invoiceId = req.params.id;
+  const { userId } = getAuth(req);
+  if (!userId) {
+    return res.status(401).json({ err: "Unauthorized" });
+  }
+  try {
+    const user = await getUserByClerkId(userId);
+    if (!user) {
+      return res.status(404).json({ err: "User not found" });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId));
+
+    if (!existing || existing.userId !== user.id) {
+      return res.status(403).json({ err: "Forbidden" });
+    }
+
+    const [deletedInvoice] = await db
+      .delete(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId))
+      .returning();
+    res.status(200).json(deletedInvoice);
+  } catch (err) {
+    if (err instanceof Error) {
+      return res.status(500).json({ err: err.message });
+    }
+  }
+});
 export default invoiceRouter;
