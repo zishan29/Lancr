@@ -5,6 +5,7 @@ import Invoices from "@/routes/invoices";
 import Clients from "@/routes/clients";
 import { SignIn } from "@clerk/react";
 import App from "./App";
+import CreateInvoice from "./routes/create-invoice";
 
 const router = createBrowserRouter([
   {
@@ -14,6 +15,7 @@ const router = createBrowserRouter([
       { index: true, element: <App /> },
       { path: "dashboard", element: <Dashboard /> },
       { path: "invoices", element: <Invoices /> },
+      { path: "invoices/new", element: <CreateInvoice /> },
       { path: "clients", element: <Clients /> },
     ],
   },
