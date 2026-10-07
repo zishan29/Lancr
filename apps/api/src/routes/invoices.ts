@@ -6,11 +6,14 @@ import {
   clientsTable,
   invoiceItemsTable,
   invoicesTable,
+  reminderLogsTable,
   usersTable,
 } from "../db/schema";
 import { and, eq } from "drizzle-orm";
 import { generateInvoiceNumber } from "../lib/generateInvoiceNumber";
 import type { InvoiceItemInput, CreateInvoiceBody } from "../types/invoice";
+import { differenceInCalendarDays } from "date-fns";
+import { generateReminder } from "../lib/generateReminder";
 
 const invoiceRouter = Express.Router();
 
@@ -187,7 +190,7 @@ invoiceRouter.delete("/:id", async (req, res) => {
   try {
     const user = await getUserByClerkId(userId);
     if (!user) {
-      return res.status(404).json({ err: "User not found" });
+      return res.status(404).json({ err: "User not found!" });
     }
 
     const [existing] = await db
@@ -204,6 +207,73 @@ invoiceRouter.delete("/:id", async (req, res) => {
       .where(eq(invoicesTable.id, invoiceId))
       .returning();
     res.status(200).json(deletedInvoice);
+  } catch (err) {
+    if (err instanceof Error) {
+      return res.status(500).json({ err: err.message });
+    }
+  }
+});
+
+invoiceRouter.post("/:id/remind", async (req, res) => {
+  const invoiceId = req.params.id;
+  const { userId } = getAuth(req);
+  if (!userId) {
+    return res.status(401).json({ err: "Unauthorized" });
+  }
+  try {
+    const user = await getUserByClerkId(userId);
+    if (!user) {
+      return res.status(404).json({ err: "User not found!" });
+    }
+
+    const [existingInvoice] = await db
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId));
+
+    if (!existingInvoice || existingInvoice.userId !== user.id) {
+      return res.status(403).json({ err: "Forbidden" });
+    }
+
+    const [existingClient] = await db
+      .select()
+      .from(clientsTable)
+      .where(eq(clientsTable.id, existingInvoice.clientId));
+
+    if (!existingClient || existingClient.userId !== user.id) {
+      return res.status(403).json({ err: "Forbidden" });
+    }
+
+    const daysOverDue = Math.max(
+      0,
+      differenceInCalendarDays(new Date(), new Date(existingInvoice.dueDate)),
+    );
+
+    const totalReminders = await db.$count(
+      reminderLogsTable,
+      eq(reminderLogsTable.invoiceId, invoiceId),
+    );
+
+    const message = await generateReminder({
+      clientName: existingClient.name,
+      invoiceNumber: existingInvoice.invoiceNumber,
+      amount: existingInvoice.totalAmount,
+      currency: existingInvoice.currency as string,
+      daysOverdue: daysOverDue,
+      reminderCount: totalReminders + 1,
+      businessName: user.name,
+    });
+
+    const tone =
+      daysOverDue <= 7 ? "gentle" : daysOverDue <= 21 ? "firm" : "final";
+
+    await db.insert(reminderLogsTable).values({
+      invoiceId,
+      tone,
+      message,
+    });
+
+    res.status(200).json({ message });
   } catch (err) {
     if (err instanceof Error) {
       return res.status(500).json({ err: err.message });
