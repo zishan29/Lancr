@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import ReminderModal from "@/components/invoices/ReminderModal";
 
 const statusColors = {
   draft: "secondary",
@@ -49,6 +50,12 @@ const Invoices = () => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const { getToken } = useAuth();
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [reminderState, setReminderState] = useState<{
+    message: string;
+    invoiceNumber: string;
+    clientName: string;
+  } | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -138,6 +145,32 @@ const Invoices = () => {
     }
   };
 
+  const handleGenerateReminder = async (
+    invoiceId: string,
+    invoiceNumber: string,
+    clientName: string,
+  ) => {
+    setReminderState({ message: "", invoiceNumber, clientName });
+    setGeneratingId(invoiceId);
+    try {
+      const token = await getToken();
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/invoices/${invoiceId}/remind`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!res.ok) throw new Error("Failed to generate reminder");
+      const data = await res.json();
+      setReminderState({ message: data.message, invoiceNumber, clientName });
+    } catch (err) {
+      toast.error("Failed to generate reminder. Try again.");
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
   if (invoices === null) return <div>Loading...</div>;
   return (
     <>
@@ -168,6 +201,11 @@ const Invoices = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ReminderModal
+        reminderState={reminderState}
+        setReminderState={setReminderState}
+        generatingId={generatingId}
+      />
       <div>
         <div className="p-6 flex flex-col gap-6">
           <div className="flex items-center justify-between">
@@ -257,6 +295,17 @@ const Invoices = () => {
                                 </DropdownMenuSubContent>
                               </DropdownMenuPortal>
                             </DropdownMenuSub>
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                handleGenerateReminder(
+                                  invoice.id!,
+                                  invoice.invoiceNumber!,
+                                  client.name,
+                                )
+                              }
+                            >
+                              Send Reminder
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onSelect={() => setInvoiceToDelete(invoice)}
